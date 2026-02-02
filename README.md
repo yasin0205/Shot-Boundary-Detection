@@ -1,68 +1,209 @@
 
+---
+
 # Shot Boundary Detection in Soccer
 
 ## Abstract
-The production of multimedia videos has surged thanks to affordable video equipment, large storage devices, and user-friendly editing tools. As video content proliferates, efficient analysis becomes increasingly critical to reducing production costs and manual labor. A fundamental step in video analysis is shot boundary detection (SBD), which segments videos into discrete units called shots. However, detecting shot boundaries poses significant challenges due to the diversity of transition types and frequent domain-specific variations. This study compares popular SBD algorithms within the soccer domain, revealing important insights. It was found that pixel-based approaches outperform the histogram-based approach in terms of precision, while deep learning models, such as TransNetV2, struggle with certain types of transitions, particularly logo transitions. Building on these findings, we developed a hybrid algorithm that combines pixel and deep learning approaches to improve performance. The proposed algorithm achieved significant performance improvements, with an average F1 score of 0.94 in the La Liga tournament and 0.88 in five other European tournaments. Key contributions of this work include the creation of a specialized soccer dataset, a comprehensive comparison of widely used SBD algorithms, and the development of an improved SBD algorithm tailored specifically for soccer videos.
+
+The production of multimedia videos has surged due to affordable video equipment, large-capacity storage devices, and user-friendly editing tools. As video content proliferates, efficient video analysis has become increasingly critical for reducing production costs and manual labor. A fundamental step in video analysis is shot boundary detection (SBD), which segments videos into discrete units called *shots*. However, detecting shot boundaries remains challenging due to the diversity of transition types and domain-specific variations.
+
+This study compares popular SBD algorithms within the soccer domain and reveals several important insights. Pixel-based approaches outperform histogram-based methods in terms of precision, while deep learning models such as TransNetV2 struggle with certain transitions, particularly logo transitions. Based on these findings, we propose a hybrid algorithm that combines pixel-based and deep learning approaches to improve performance. The proposed method achieves significant improvements, with an average F1 score of **0.94** on the La Liga tournament and **0.88** across five other European tournaments.
+
+**Key contributions include:**
+
+* A specialized soccer SBD dataset
+* A comprehensive comparison of widely used SBD algorithms
+* A hybrid SBD algorithm tailored for soccer broadcast videos
+
+---
+
+## Dataset Description
+
+### `dataset/`
+
+* Contains **full-length soccer match broadcasts**
+* One folder per match
+* Each match folder includes:
+
+  * `1.mp4` → First half
+  * `2.mp4` → Second half
+  * `labels.json` → SoccerNet-style event annotations (goals, cards, etc.)
+
+These annotations are used to automatically extract **goal-centered clips**.
+
+### `Ground Truth/annotation.csv`
+
+* A single CSV file containing **manually annotated shot boundaries**
+* Used for **parameter optimization and evaluation**
+
+---
+
+## Repository Structure
+
+```
+Shot-Boundary-Detection/
+├── dataset/                        # Full match videos + event annotations from SoccerNet
+│   ├── match_1/
+│   │   ├── 1.mp4
+│   │   ├── 2.mp4
+│   │   └── labels.json
+│   └── ...
+│
+│   └── 00_goalcut/                 # Extracted goal-centered clips (MP4)
+│
+├── output_ffmpeg/                  # Extracted frames + timestamp CSVs
+├── output_transnet_v2/             # TransNetV2 SBD outputs
+├── output_adaptive_detector/       # Adaptive detector outputs
+├── output_histogram_detector/      # Histogram detector outputs
+├── output_fusion/                  # Final fused SBD results
+│
+├── Ground Truth/
+│   └── annotation.csv              # Manual annotations
+│
+├── 01_goal_clip_extraction.py      # Event-based goal clip extraction
+├── 01_frame_extraction.py          # Frame extraction
+├── 02_transnet_v2.py               # SBD using TransNetV2
+├── 03_adaptive_detector.py         # Pixel-based adaptive detector
+├── 03_histogram_detector.py        # Histogram-based detector
+├── 03_grid_search_parameters_adaptive_detector.py
+│                                   # Parameter tuning for AdaptiveDetector
+├── 03_grid_search_parameters_histogram_detector.py
+│                                   # Parameter tuning for HistogramDetector
+├── 03_statistical_analysis_adaptive_detector.ipynb
+│                                   # Quantitative evaluation and plots
+├── 03_statistical_analysis_histogram_detector.ipynb
+│                                   # Quantitative evaluation and plots
+├── 04_fusion.py                    # Fusion of TransNetV2 and AdaptiveDetector
+│
+├── requirements.txt                # Python dependencies
+└── README.md
+```
 
 ---
 
 ## Pipeline Execution Steps
 
-To execute the pipeline successfully, follow the steps below:
-
 ### 1. Clone the Repository
-Clone the GitHub repository to your local machine.
+
+```bash
+git clone https://github.com/yasin0205/Shot-Boundary-Detection.git
+cd Shot-Boundary-Detection
+```
+
+---
 
 ### 2. Install Dependencies
-Install the required dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
+**Notes:**
+
+* Python **3.7** is required.
+
+---
+
 ### 3. Extract Goal Clips
-Run the script `01_goal_clip_extraction.py` to extract goal-related clips from the full-length video using the JSON file annotations:
+
 ```bash
 python 01_goal_clip_extraction.py
 ```
-- **Output:** Clips will be saved in the `dataset/00_goal_cut` folder.
+
+---
 
 ### 4. Extract Frames
-Decompose each goal clip into individual frames by running `01_frame_extraction.py`:
+
 ```bash
 python 01_frame_extraction.py
 ```
-- **Output:** Frames will be saved in the `output_ffmpeg` folder.
 
-### 5. Shot Boundary Detection with TransNetV2
-Perform initial shot boundary detection using `02_transnet_v2.py`:
+---
+
+### 5. Shot Boundary Detection Using TransNetV2
+
 ```bash
 python 02_transnet_v2.py
 ```
-- **Output:** Detected boundaries, clips, and a CSV file will be saved in the `output_transnet_v2` folder.
 
-### 6. Detect Shot Boundaries with Fine-Tuned AdaptiveDetector
-Run the fine-tuned AdaptiveDetector algorithm:
+**If you encounter inference issues:**
+
+Download the pretrained weights from:
+[https://github.com/soCzech/TransNetV2/tree/master/inference/transnetv2-weights](https://github.com/soCzech/TransNetV2/tree/master/inference/transnetv2-weights)
+
+Place them in the `transnetv2-weights/` directory.
+
+---
+
+### 6. Pixel-Based Shot Boundary Detection
+
+#### AdaptiveDetector
+
 ```bash
 python 03_adaptive_detector.py
 ```
-- **To experiment with parameters:** Use `03_grid_search_parameters_adaptive_detector.py`.
-- **For statistical analysis:** Use `03_statistical_analysis_adaptive_detector.ipynb`.
 
-If running the grid search algorithm with SLURM, use the `03_grid_search_parameters_adaptive_detector.sbatch` file.
-- **Output:** Clips and CSV files will be saved in the `output_pyscene` folder.
-- Follow the same steps for HistogramDetector.
+**Optional parameter tuning:**
+
+```bash
+python 03_grid_search_parameters_adaptive_detector.py
+```
+
+If running the grid search with **SLURM**, use:
+
+```
+03_grid_search_parameters_adaptive_detector.sbatch
+```
+
+* Statistical analysis is provided in:
+
+  ```
+  03_statistical_analysis_adaptive_detector.ipynb
+  ```
+
+---
+
+#### HistogramDetector
+
+```bash
+python 03_histogram_detector.py
+```
+
+**Optional parameter tuning:**
+
+```bash
+python 03_grid_search_parameters_histogram_detector.py
+```
+
+If running the grid search with **SLURM**, use:
+
+```
+03_grid_search_parameters_histogram_detector.sbatch
+```
+
+* Statistical analysis is provided in:
+
+  ```
+  03_statistical_analysis_histogram_detector.ipynb
+  ```
+
+---
 
 ### 7. Fusion of Detection Results
-Merge the outputs from TransNetV2 and AdaptiveDetector using `04_fusion.py`:
+
 ```bash
 python 04_fusion.py
 ```
-- **Output:** Final results, including clips and a CSV file, will be saved in the `output_fusion` folder.
+
+**This step:**
+
+* Combines TransNetV2 and AdaptiveDetector outputs into a final fused prediction set
 
 ---
 
 ## Contact
-For further questions or inquiries, please contact:
-**Mohammad Azizul Islam Yasin**  
-Email: azizulislamyasin@gmail.com
-```
+
+**Mohammad Azizul Islam Yasin**
+📧 Email: [azizulislamyasin@gmail.com](mailto:azizulislamyasin@gmail.com)
+
+---
