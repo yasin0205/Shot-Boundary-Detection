@@ -1,3 +1,228 @@
+"""
+===============================================================================
+DETECTION FUSION PIPELINE — TRANSNETV2 + ADAPTIVE DETECTOR ENSEMBLE
+===============================================================================
+
+Purpose
+-------
+This script combines (fuses) shot boundary detections produced by:
+
+    1) TransNetV2 (deep learning detector)
+    2) PySceneDetect AdaptiveDetector (classical motion-based detector)
+
+The goal is to improve scene boundary accuracy by merging detections from
+two independent methods and re-evaluating performance against ground truth.
+
+The pipeline performs:
+
+    1) Load detection results from CSV outputs of both methods
+    2) Merge detections using a tolerance-based union strategy
+    3) Compute evaluation metrics (Precision / Recall / F1)
+    4) Generate fused video clips
+    5) Save final summary CSV
+
+This implements a DECISION-LEVEL ENSEMBLE approach.
+
+
+===============================================================================
+WHY FUSION WORKS
+===============================================================================
+
+Different detectors fail in different situations:
+
+TransNetV2 (Deep Learning)
+    + Good at semantic changes
+    + Handles motion and broadcast transitions
+    - Sometimes misses subtle edits
+
+AdaptiveDetector (Classical)
+    + Sensitive to sudden motion/brightness changes
+    + Good at sharp edits
+    - False positives during camera motion
+
+Combining them reduces individual weaknesses.
+
+
+===============================================================================
+INPUT FILES
+===============================================================================
+
+From previous scripts:
+
+./output_adaptive_detector/summary_adaptive_detector.csv
+./output_transnet_v2/summary_transnet_v2.csv
+
+Each CSV contains detected frame indices for each video.
+
+The script merges both detections per video.
+
+
+===============================================================================
+FRAME UNION LOGIC
+===============================================================================
+
+We combine detected frames from both detectors.
+
+Problem:
+    Two detectors may detect the SAME cut but at slightly different frames.
+
+Solution:
+    If two frames differ by ≤ FRAME_DIFF_THRESHOLD (default = 2 frames)
+    → treat them as the same boundary
+
+Algorithm:
+    1) Combine both frame lists
+    2) Sort frames
+    3) Add frame only if no existing frame is within tolerance
+
+Result:
+    A cleaned union set of boundaries.
+
+
+===============================================================================
+GROUND TRUTH MATCHING
+===============================================================================
+
+We compare fused detections to annotated ground truth.
+
+A detection is correct if:
+
+    |detected_frame − ground_truth_frame| ≤ MARGIN
+
+Default:
+    MARGIN = 25 frames (~1 second @25fps)
+
+This accounts for annotation ambiguity.
+
+
+===============================================================================
+METRICS COMPUTED
+===============================================================================
+
+True Positive (TP)
+    Union detection matches real cut
+
+False Positive (FP)
+    Union detection not present in ground truth
+
+False Negative (FN)
+    Ground truth cut not detected
+
+Precision
+---------
+    TP / (TP + FP)
+
+Recall
+------
+    TP / (TP + FN)
+
+F1 Score
+--------
+    Harmonic balance between precision and recall
+
+
+===============================================================================
+VIDEO CLIP GENERATION
+===============================================================================
+
+After fusion, clips are generated using union frame boundaries.
+
+For each video:
+
+    boundary[i] → boundary[i+1]
+        becomes a new clip
+
+Last boundary → end of video
+        becomes final clip
+
+OpenCV VideoWriter settings:
+    codec = mp4v
+    fps   = original video fps
+    resolution = original video resolution
+
+
+===============================================================================
+OUTPUT STRUCTURE
+===============================================================================
+
+./output_fusion/
+    00.csv                → raw merged detection table
+    summary_fusion.csv    → final evaluation results
+
+    A/
+        A_clip_1.mp4
+        A_clip_2.mp4
+        ...
+    B/
+        B_clip_1.mp4
+        ...
+
+
+===============================================================================
+SUMMARY CSV CONTENT
+===============================================================================
+
+summary_fusion.csv contains:
+
+    Video
+    TP / FP / FN
+    Precision / Recall / F1 Score
+    Frames detected by each method
+    Fused union frames
+    False positive frames
+    False negative frames
+    Processing time
+
+This allows comparison:
+
+    Adaptive vs TransNetV2 vs Fusion
+
+
+===============================================================================
+PIPELINE FLOW
+===============================================================================
+
+load CSV detections
+        ↓
+merge frame detections (union with tolerance)
+        ↓
+evaluate accuracy vs ground truth
+        ↓
+generate fused clips
+        ↓
+save summary CSV
+
+
+===============================================================================
+WHY THIS SCRIPT EXISTS
+===============================================================================
+
+Individual detectors:
+    have complementary strengths
+
+Fusion:
+    increases recall without severely harming precision
+
+This approximates an ensemble model commonly used in
+computer vision research.
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Requires outputs from previous scripts
+- Union strategy may increase false positives
+- No weighting between detectors (simple union)
+- Processing time increases due to clip export
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
+
 import os
 import pandas as pd
 import cv2

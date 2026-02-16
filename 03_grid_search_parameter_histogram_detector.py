@@ -1,3 +1,245 @@
+"""
+===============================================================================
+PYSCENEDETECT HISTOGRAM DETECTOR — PARALLEL GRID SEARCH BENCHMARK PIPELINE
+===============================================================================
+
+Purpose
+-------
+This script evaluates the HistogramDetector scene-cut algorithm from
+PySceneDetect by running a GRID SEARCH over multiple parameter combinations
+and measuring detection accuracy against ground-truth annotations.
+
+Unlike other scripts that simply run detection once, this file is an
+EXPERIMENTAL BENCHMARKING TOOL.
+
+The pipeline performs:
+
+    1) Scene cut detection using HistogramDetector
+    2) Automatic parameter tuning (grid search)
+    3) Accuracy evaluation (Precision / Recall / F1)
+    4) Parallel processing for speed
+    5) Export results to CSV for analysis
+
+Typical usage:
+    - Determine optimal threshold values
+    - Compare classical algorithms vs deep learning models
+    - Produce tables for research papers
+
+
+===============================================================================
+WHAT HISTOGRAM DETECTOR DOES
+===============================================================================
+
+Each video frame has a color histogram representing pixel distribution.
+
+If two consecutive frames differ significantly in histogram distribution,
+a scene cut is detected.
+
+Conceptually:
+
+    Frame A histogram ≈ Frame B histogram → same shot
+    Frame A histogram ≠ Frame B histogram → new shot
+
+This method works well for:
+    camera switches
+    replay transitions
+    broadcast edits
+
+But struggles with:
+    fast motion
+    flashes
+    lighting changes
+
+
+===============================================================================
+INPUT / OUTPUT STRUCTURE
+===============================================================================
+
+Input:
+    ./A.mp4
+    ./B.mp4
+    ./C.mp4
+    ...
+
+Output:
+    ./output_histogram_detector/
+        grid_search_results_histogram.csv
+
+NOTE:
+This script DOES NOT export clips.
+It only measures detection performance.
+
+
+===============================================================================
+GROUND TRUTH MATCHING
+===============================================================================
+
+Each video has manually annotated shot boundaries stored as frame indices:
+
+    "A": [0, 405, 451, 519, ...]
+
+Detected boundaries rarely match perfectly,
+so we allow tolerance:
+
+    |detected_frame − ground_truth_frame| ≤ margin
+
+Default:
+    margin = 25 frames (~1 second @25fps)
+
+This simulates realistic annotation uncertainty.
+
+
+===============================================================================
+GRID SEARCH (CORE EXPERIMENT)
+===============================================================================
+
+We test all parameter combinations:
+
+thresholds     → sensitivity of cut detection
+bins           → histogram resolution
+min_scene_len  → minimum allowed shot duration
+
+Combinations generated using:
+
+    itertools.product(thresholds, bins, min_scene_len)
+
+For EACH video:
+    For EACH parameter set:
+        run detection
+        compute metrics
+        store results
+
+
+===============================================================================
+PARAMETER MEANING
+===============================================================================
+
+threshold
+    Minimum histogram difference to declare a cut
+    lower  → more sensitive (more FP)
+    higher → stricter (more FN)
+
+bins
+    Histogram resolution
+    small bins → coarse comparison
+    large bins → precise comparison
+
+min_scene_len
+    Minimum frames between cuts
+    prevents noisy rapid cuts
+
+
+===============================================================================
+MULTIPROCESSING ACCELERATION
+===============================================================================
+
+Videos are processed in parallel using:
+
+    multiprocessing.Pool()
+
+Each CPU core handles a separate video.
+This significantly speeds up grid search experiments.
+
+
+===============================================================================
+METRICS COMPUTED
+===============================================================================
+
+True Positive (TP)
+    Correctly detected scene cut
+
+False Positive (FP)
+    Detected cut not in ground truth
+
+False Negative (FN)
+    Missed real cut
+
+
+Precision
+---------
+    TP / (TP + FP)
+    Reliability of detector
+
+Recall
+------
+    TP / (TP + FN)
+    Completeness of detection
+
+F1 Score
+--------
+    Balanced performance metric
+
+
+===============================================================================
+RESULT CSV CONTENT
+===============================================================================
+
+grid_search_results_histogram.csv contains:
+
+    Video name
+    Threshold
+    Histogram bins
+    Minimum scene length
+    Number of detected scenes
+    Ground truth frames
+    Detected frames
+    TP / FP / FN
+    Precision / Recall / F1
+    False positive frames
+    False negative frames
+    Processing time
+
+Rows are sorted by:
+    Video name → Highest F1 score first
+
+This allows easy selection of optimal parameters.
+
+
+===============================================================================
+PIPELINE FLOW
+===============================================================================
+
+collect videos
+    ↓
+parallel processing
+    ↓
+for each parameter combination
+    ↓
+detect scenes
+    ↓
+evaluate accuracy
+    ↓
+store results
+    ↓
+save CSV summary
+
+
+===============================================================================
+WHY THIS SCRIPT EXISTS
+===============================================================================
+
+AdaptiveDetector → motion-based detection
+HistogramDetector → color-based detection
+TransNetV2 → deep learning detection
+
+This script helps compare ALL methods quantitatively.
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Sensitive to brightness changes
+- Cannot detect gradual transitions reliably
+- Requires ground truth per video
+- Performance depends heavily on threshold tuning
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
 import os
 import time
 import pandas as pd

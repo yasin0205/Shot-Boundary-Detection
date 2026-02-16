@@ -1,3 +1,229 @@
+"""
+===============================================================================
+PYSCENEDETECT HISTOGRAM DETECTOR — SCENE SEGMENTATION + CLIP EXPORT + METRICS
+===============================================================================
+
+Purpose
+-------
+This script performs scene (shot) boundary detection using the classical
+HistogramDetector algorithm from PySceneDetect, exports each detected scene
+as an individual video clip, and evaluates detection accuracy against
+ground-truth frame annotations.
+
+This is a full processing pipeline:
+
+    1) Detect shot boundaries
+    2) Generate scene clips
+    3) Compare with ground truth
+    4) Compute evaluation metrics
+    5) Save summary CSV
+
+Typical use:
+    - Video dataset preparation
+    - Highlight segmentation preprocessing
+    - Classical baseline evaluation
+    - Comparing with AdaptiveDetector / TransNetV2
+
+
+===============================================================================
+CORE IDEA — HISTOGRAM-BASED SCENE DETECTION
+===============================================================================
+
+Each video frame has a color distribution (histogram).
+
+If consecutive frames have very different color distributions,
+it indicates a shot change.
+
+Conceptually:
+
+    Similar histogram  → same camera shot
+    Different histogram → new scene cut
+
+This method detects:
+    camera switches
+    replay transitions
+    editing cuts
+
+But struggles with:
+    flashes
+    gradual fades
+    rapid lighting changes
+
+
+===============================================================================
+INPUT / OUTPUT STRUCTURE
+===============================================================================
+
+Input directory:
+    ./
+        A.mp4
+        B.mp4
+        ...
+
+Output directory:
+    ./output_histogram_detector/
+        A/
+            clip_1.mp4
+            clip_2.mp4
+            ...
+        summary_histogram_detector.csv
+
+Each video gets its own folder of scene clips.
+
+
+===============================================================================
+SCENE DETECTION PROCESS
+===============================================================================
+
+PySceneDetect returns scenes as time ranges:
+
+    [(start_time, end_time), ...]
+
+We convert them to frame numbers:
+
+    frame_number = scene_start.get_frames()
+
+Each start frame represents a detected cut boundary.
+
+
+===============================================================================
+CLIP GENERATION
+===============================================================================
+
+For each detected scene:
+
+    1) Seek video to start frame
+    2) Read frames sequentially
+    3) Write frames into a new video file
+
+OpenCV settings:
+    codec = mp4v
+    fps   = fixed (25)
+    resolution = original video
+
+Each shot becomes an independent playable clip.
+
+
+===============================================================================
+GROUND TRUTH MATCHING (WITH TOLERANCE)
+===============================================================================
+
+Human annotations rarely match exact frame numbers.
+Therefore a detection is considered correct if:
+
+    |detected_frame − ground_truth_frame| ≤ margin
+
+Default:
+    margin = 25 frames (~1 second at 25fps)
+
+This prevents penalizing near-correct predictions.
+
+
+===============================================================================
+METRICS CALCULATED
+===============================================================================
+
+True Positive (TP)
+    Detected cut matches real cut
+
+False Positive (FP)
+    Detector predicted extra cut
+
+False Negative (FN)
+    Detector missed real cut
+
+
+Precision
+---------
+    TP / (TP + FP)
+    Reliability of detections
+
+Recall
+------
+    TP / (TP + FN)
+    Coverage of real cuts
+
+F1 Score
+--------
+    Balanced accuracy measure
+
+
+===============================================================================
+PARAMETERS
+===============================================================================
+
+threshold
+    Sensitivity of histogram difference
+    lower → more cuts (higher FP)
+    higher → fewer cuts (higher FN)
+
+bins
+    Histogram resolution
+    larger bins = finer color comparison
+
+min_scene_len
+    Minimum frames allowed per scene
+    prevents noisy rapid cuts
+
+
+===============================================================================
+RESULT CSV CONTENT
+===============================================================================
+
+summary_histogram_detector.csv contains:
+
+    video name
+    parameter configuration
+    number of scenes
+    ground truth frames
+    detected frames
+    TP / FP / FN
+    precision / recall / F1
+    false positive frames
+    false negative frames
+    processing time
+
+
+===============================================================================
+PIPELINE FLOW
+===============================================================================
+
+for each video:
+    detect scenes
+    export clips
+    compute metrics
+    store results
+
+finally:
+    save CSV summary
+
+
+===============================================================================
+WHY THIS SCRIPT EXISTS
+===============================================================================
+
+HistogramDetector → color-based classical baseline
+AdaptiveDetector  → motion-based classical baseline
+TransNetV2        → deep learning method
+
+This script provides a reproducible baseline segmentation dataset.
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Sensitive to brightness flashes
+- Not robust to gradual transitions
+- Fixed FPS output
+- Slower due to clip exporting
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
 import os
 import time
 import pandas as pd

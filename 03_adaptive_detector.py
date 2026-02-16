@@ -1,3 +1,254 @@
+"""
+===============================================================================
+PYSCENEDETECT ADAPTIVE DETECTOR — SCENE SEGMENTATION + PARAMETER BENCHMARKING
+===============================================================================
+
+Purpose
+-------
+This script performs shot boundary detection using the classical computer-vision
+algorithm AdaptiveDetector from PySceneDetect.
+
+Unlike the TransNetV2 deep learning script, this file implements a
+TRADITIONAL video segmentation pipeline and evaluates detection quality against
+ground-truth annotations.
+
+The script performs four tasks:
+
+    1) Detect scene cuts using AdaptiveDetector
+    2) Generate video clips for each detected scene
+    3) Compare detected cuts with human annotations
+    4) Benchmark detector parameters and save metrics
+
+This is designed for:
+    - comparing classical vs deep learning scene detection
+    - finding optimal detection thresholds
+    - building reproducible experiments
+
+
+===============================================================================
+KEY CONCEPT — WHAT IS A SCENE CUT?
+===============================================================================
+
+A video is composed of shots:
+
+    Shot A → Cut → Shot B → Cut → Shot C
+
+A scene cut occurs when visual content changes abruptly
+(camera switch, replay, transition, etc).
+
+AdaptiveDetector identifies cuts by measuring frame-to-frame
+content change using luminance and histogram differences.
+
+
+===============================================================================
+INPUT / OUTPUT STRUCTURE
+===============================================================================
+
+Input:
+    All .mp4 videos in working directory
+
+Output:
+    ./output_adaptive_detector/
+        A/
+            clip_1.mp4
+            clip_2.mp4
+            ...
+        B/
+            clip_1.mp4
+            ...
+        summary_adaptive_detector.csv
+
+Each video gets its own folder of extracted scenes.
+
+
+===============================================================================
+HOW ADAPTIVE DETECTOR WORKS
+===============================================================================
+
+The algorithm compares consecutive frames and computes content change.
+
+If change > threshold → new scene detected
+
+Core parameters:
+
+adaptive_threshold
+    Sensitivity to change
+    lower = more cuts
+    higher = fewer cuts
+
+window_width
+    Number of frames used to smooth detection
+
+min_content_val
+    Minimum difference needed to consider cut
+
+luma_only
+    Use brightness only instead of full color
+
+min_scene_len
+    Minimum allowed length of a scene in frames
+
+
+===============================================================================
+PARAMETER SWEEP (EXPERIMENT MODE)
+===============================================================================
+
+This script does NOT just run once.
+It tests combinations of detector parameters:
+
+param_ranges → multiple configurations
+itertools.product → generates combinations
+
+For each video:
+    For each parameter configuration:
+        run detection
+        compute metrics
+        save results
+
+This allows hyperparameter optimization.
+
+
+===============================================================================
+DETECTED FRAMES REPRESENTATION
+===============================================================================
+
+PySceneDetect returns scenes as timecodes:
+
+    [(start_time, end_time), ...]
+
+We convert to frame numbers:
+
+    frame_number = scene_start.get_frames()
+
+Detected frames represent shot boundaries.
+
+
+===============================================================================
+GROUND TRUTH MATCHING (WITH TOLERANCE)
+===============================================================================
+
+Human annotations and detectors rarely match exactly.
+
+Therefore we use a margin window:
+
+    |detected_frame − ground_truth_frame| ≤ margin
+
+Default:
+    margin = 25 frames
+
+Meaning:
+    prediction within ±1 second (at 25 fps) counts as correct
+
+
+===============================================================================
+METRICS CALCULATED
+===============================================================================
+
+TP — True Positive
+    Detected cut matches real cut
+
+FP — False Positive
+    Detector found a cut where none exists
+
+FN — False Negative
+    Detector missed a real cut
+
+
+Precision
+---------
+    TP / (TP + FP)
+    Reliability of predictions
+
+Recall
+------
+    TP / (TP + FN)
+    Completeness of detection
+
+F1 Score
+--------
+    Harmonic mean of precision and recall
+
+
+===============================================================================
+CLIP GENERATION
+===============================================================================
+
+Each detected scene is exported as a standalone video.
+
+Process:
+    seek video → start_frame
+    read frames → until end_frame
+    write to new file
+
+OpenCV VideoWriter settings:
+    codec = mp4v
+    fps   = fixed (25)
+    resolution = original video
+
+
+===============================================================================
+RESULT CSV CONTENT
+===============================================================================
+
+summary_adaptive_detector.csv contains:
+
+    video name
+    parameter configuration
+    number of scenes detected
+    ground truth frames
+    detected frames
+    TP / FP / FN
+    precision / recall / F1
+    false positive frames
+    false negative frames
+    processing time
+
+This file allows quantitative comparison across configurations.
+
+
+===============================================================================
+PIPELINE FLOW
+===============================================================================
+
+for each video:
+    for each parameter combination:
+        detect scenes
+        extract clips
+        compute metrics
+        store results
+
+finally:
+    save all experiment results to CSV
+
+
+===============================================================================
+WHY THIS SCRIPT EXISTS
+===============================================================================
+
+TransNetV2 → modern deep learning detector
+AdaptiveDetector → classical baseline
+
+This script allows direct comparison:
+
+    classical vs neural network segmentation performance
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Sensitive to flashes and camera motion
+- Parameter tuning required per dataset
+- Slower due to repeated runs (benchmark mode)
+- Uses fixed FPS when writing clips
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
+
 import os
 import time
 import pandas as pd

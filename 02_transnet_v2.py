@@ -1,3 +1,254 @@
+"""
+===============================================================================
+TRANSNETV2 SCENE DETECTION + CLIP GENERATION + METRIC EVALUATION PIPELINE
+===============================================================================
+
+Purpose
+-------
+This script performs AUTOMATIC SHOT BOUNDARY DETECTION on videos using the
+deep learning model TransNetV2, splits the video into scene clips, and evaluates
+detection accuracy against manually labeled ground-truth frames.
+
+The pipeline does 3 major tasks:
+
+    1) Detect scene cuts using a neural network (TransNetV2)
+    2) Export each detected scene as a separate video clip
+    3) Compare detected cuts with ground truth → compute Precision/Recall/F1
+
+This is typically used in:
+    - sports broadcast segmentation
+    - highlight detection pipelines
+    - video indexing
+    - dataset preprocessing for action recognition
+    - benchmarking shot boundary detectors
+
+
+===============================================================================
+WHAT TRANSNETV2 DOES (CORE IDEA)
+===============================================================================
+
+A video is not continuous visually — it consists of SHOTS:
+
+    Shot A | Cut | Shot B | Cut | Shot C | ...
+
+A "scene cut" (shot boundary) occurs when the camera view changes abruptly.
+
+TransNetV2 is a convolutional neural network trained to predict:
+    probability(frame i is a scene boundary)
+
+The model outputs a probability for EACH frame:
+    0 → not a cut
+    1 → strong cut confidence
+
+We convert these predictions into actual scene intervals.
+
+
+===============================================================================
+INPUT / OUTPUT STRUCTURE
+===============================================================================
+
+Input directory:
+    ./
+        A.mp4
+        B.mp4
+        C.mp4
+        ...
+
+Output directory:
+    ./output_transnet_v2/
+        A/
+            clip_1.mp4
+            clip_2.mp4
+            clip_3.mp4
+        B/
+            clip_1.mp4
+            clip_2.mp4
+        summary_transnet_v2.csv
+
+Each video gets its own folder containing separated scenes.
+
+
+===============================================================================
+MODEL OUTPUT EXPLANATION
+===============================================================================
+
+model.predict_video(video_path) returns:
+
+    video_frames                → decoded frames (unused)
+    single_frame_predictions    → probability of cut per frame
+    all_frame_predictions       → internal smoothing predictions
+
+We convert predictions into scenes using:
+
+    scenes = model.predictions_to_scenes(predictions)
+
+Output format:
+    [(start_frame, end_frame), (start_frame, end_frame), ...]
+
+Example:
+    [(0, 150), (150, 340), (340, 512)]
+
+Meaning:
+    scene 1 = frames 0–149
+    scene 2 = frames 150–339
+    scene 3 = frames 340–511
+
+
+===============================================================================
+CLIP GENERATION LOGIC
+===============================================================================
+
+For each detected scene:
+
+    1) Seek video to start_frame
+    2) Read frames sequentially
+    3) Write frames into new video file
+
+OpenCV VideoWriter parameters:
+
+    codec  = mp4v
+    fps    = original video fps
+    size   = original resolution
+
+Result:
+    Each scene becomes an independent playable video clip.
+
+
+===============================================================================
+GROUND TRUTH ANNOTATIONS
+===============================================================================
+
+ground_truth_frames dictionary contains manually labeled cut frames.
+
+Example:
+    "A": [0, 405, 451, 519, 569]
+
+Meaning:
+    Human labeled shot boundaries at these frame indices.
+
+Video filename (without extension) is used as key:
+    A.mp4 → key "A"
+
+
+===============================================================================
+HOW DETECTION IS EVALUATED
+===============================================================================
+
+A detected cut is considered CORRECT if it occurs close to a ground truth cut.
+
+Tolerance window:
+    ± margin frames (default = 25 frames)
+
+Reason:
+    Humans and models rarely agree on exact frame due to motion blur,
+    encoding differences, and gradual transitions.
+
+So instead of exact equality:
+    abs(detected_frame - ground_truth_frame) <= margin
+
+
+===============================================================================
+METRICS COMPUTED
+===============================================================================
+
+Definitions:
+
+TP (True Positive)
+    Detected cut matches a real cut within margin
+
+FP (False Positive)
+    Model predicted a cut where none exists
+
+FN (False Negative)
+    Model missed a real cut
+
+
+Precision
+---------
+    How many detected cuts are correct
+
+        precision = TP / (TP + FP)
+
+
+Recall
+------
+    How many real cuts were found
+
+        recall = TP / (TP + FN)
+
+
+F1 Score
+--------
+    Balanced performance metric
+
+        F1 = 2 * (precision * recall) / (precision + recall)
+
+
+===============================================================================
+WHAT GETS SAVED TO CSV
+===============================================================================
+
+summary_transnet_v2.csv contains per-video report:
+
+    Video name
+    Number of detected scenes
+    Detected frame indices
+    Ground truth indices
+    TP / FP / FN
+    Precision / Recall / F1
+    Incorrect detections (FP frames)
+    Missed detections (FN frames)
+    Processing time
+
+This allows benchmarking multiple videos and comparing models.
+
+
+===============================================================================
+PROCESS FLOW
+===============================================================================
+
+for each video:
+    load video
+    run TransNetV2 inference
+    convert predictions → scenes
+    export scene clips
+    compare with ground truth
+    compute metrics
+    store report
+
+finally:
+    save summary CSV
+
+
+===============================================================================
+IMPORTANT DESIGN DECISIONS
+===============================================================================
+
+Why deep learning instead of color histogram cuts?
+    Sports videos have flashes, replays, camera motion → traditional methods fail
+
+Why frame tolerance margin?
+    Real shot boundary is not a single exact frame in practice
+
+Why re-encode clips?
+    Ensures compatibility and exact frame boundaries
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Requires GPU for fast inference (CPU is slow)
+- Gradual transitions may be partially inaccurate
+- Needs correct ground truth naming (A, B, C...)
+- Large videos consume RAM during prediction
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
 import os
 import time
 import csv

@@ -1,3 +1,237 @@
+"""
+===============================================================================
+PYSCENEDETECT ADAPTIVE DETECTOR — PARALLEL GRID SEARCH EVALUATION FRAMEWORK
+===============================================================================
+
+Purpose
+-------
+This script benchmarks the AdaptiveDetector scene cut algorithm from
+PySceneDetect by running a multi-parameter grid search and comparing
+detected shot boundaries against manually labeled ground truth frames.
+
+Unlike a simple detection script, this file is designed as a
+RESEARCH EXPERIMENT PIPELINE.
+
+The pipeline performs:
+
+    1) Scene cut detection using AdaptiveDetector
+    2) Hyperparameter tuning via grid search
+    3) Parallel processing across videos
+    4) Accuracy evaluation (Precision / Recall / F1 Score)
+    5) CSV export for analysis and comparison
+
+Typical usage:
+    - Classical vs deep learning comparison
+    - Selecting optimal AdaptiveDetector parameters
+    - Producing quantitative experiment tables
+
+
+===============================================================================
+WHAT ADAPTIVE DETECTOR DOES
+===============================================================================
+
+AdaptiveDetector identifies scene changes using frame-to-frame content change.
+
+Instead of comparing only colors (HistogramDetector),
+this method analyzes intensity variation over time
+and adapts sensitivity dynamically.
+
+Conceptually:
+
+    Small variation → same shot
+    Large variation → new shot boundary
+
+Better at:
+    motion transitions
+    camera pans
+    broadcast cuts
+
+Weaker at:
+    very gradual fades
+    extreme lighting flashes
+
+
+===============================================================================
+INPUT / OUTPUT STRUCTURE
+===============================================================================
+
+Input:
+    ./A.mp4
+    ./B.mp4
+    ./C.mp4
+    ...
+
+Output:
+    ./output_adaptive_detector/
+        grid_search_results_adaptive_detector.csv
+
+NOTE:
+No video clips are created.
+This script only evaluates detection accuracy.
+
+
+===============================================================================
+GROUND TRUTH MATCHING
+===============================================================================
+
+Each video has manually labeled cut frames:
+
+    "A": [0, 405, 451, 519, ...]
+
+Since detection rarely matches exact frame numbers,
+we allow tolerance:
+
+    |detected_frame − ground_truth_frame| ≤ margin
+
+Default:
+    margin = 25 frames (~1 second @25fps)
+
+This avoids penalizing near-correct detections.
+
+
+===============================================================================
+GRID SEARCH (PARAMETER OPTIMIZATION)
+===============================================================================
+
+We test combinations of AdaptiveDetector parameters:
+
+adaptive_threshold
+    sensitivity to change magnitude
+
+window_width
+    smoothing window across frames
+
+min_content_val
+    minimum change needed to trigger detection
+
+luma_only
+    brightness-only comparison vs color comparison
+
+min_scene_len
+    minimum allowed shot duration
+
+All combinations generated using:
+
+    itertools.product(...)
+
+For EACH video:
+    For EACH parameter combination:
+        run detection
+        compute metrics
+        store results
+
+
+===============================================================================
+MULTIPROCESSING
+===============================================================================
+
+Videos are processed in parallel using:
+
+    multiprocessing.Pool()
+
+Each CPU core processes a separate video simultaneously.
+
+This significantly reduces experiment runtime during grid search.
+
+
+===============================================================================
+METRICS COMPUTED
+===============================================================================
+
+True Positive (TP)
+    Correctly detected scene cut
+
+False Positive (FP)
+    Detector predicted non-existent cut
+
+False Negative (FN)
+    Detector missed real cut
+
+
+Precision
+---------
+    TP / (TP + FP)
+    Prediction reliability
+
+Recall
+------
+    TP / (TP + FN)
+    Detection completeness
+
+F1 Score
+--------
+    Harmonic balance between precision and recall
+
+
+===============================================================================
+RESULT CSV CONTENT
+===============================================================================
+
+grid_search_results_adaptive_detector.csv contains:
+
+    Video name
+    Parameter configuration
+    Number of scenes detected
+    Ground truth frames
+    Detected frames
+    TP / FP / FN
+    Precision / Recall / F1
+    False positive frames
+    False negative frames
+    Processing time
+
+Rows sorted by:
+    Video name → Highest F1 score first
+
+This allows selecting the best parameter configuration.
+
+
+===============================================================================
+PIPELINE FLOW
+===============================================================================
+
+collect videos
+    ↓
+parallel processing
+    ↓
+for each parameter set
+    ↓
+detect scene boundaries
+    ↓
+compare with ground truth
+    ↓
+compute metrics
+    ↓
+save CSV report
+
+
+===============================================================================
+WHY THIS SCRIPT EXISTS
+===============================================================================
+
+HistogramDetector → color-based detection
+AdaptiveDetector → motion-based detection
+TransNetV2 → deep learning detection
+
+This script provides a quantitative baseline to compare
+classical algorithms against neural networks.
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Requires ground truth annotations
+- Sensitive to parameter selection
+- No clip export (evaluation only)
+- Performance varies across video styles
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
 import os
 import time
 import pandas as pd

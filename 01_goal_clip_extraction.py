@@ -1,3 +1,251 @@
+"""
+===============================================================================
+GOAL CLIP EXTRACTION PIPELINE — ARCHITECTURE & LOGIC DOCUMENTATION
+===============================================================================
+
+Purpose
+-------
+This script scans a football (soccer) dataset where each match folder contains:
+    - 2 match videos (first half + second half)
+    - 1 annotation JSON file
+
+The script extracts short video clips around every "Goal" event using FFmpeg.
+
+For each detected goal:
+    Clip = 10 seconds BEFORE the goal + 70 seconds AFTER the goal
+
+The final clips are saved into a centralized folder:
+    ./00_goalcut/
+
+This script is typically used for:
+    - highlight generation
+    - action recognition datasets
+    - sports event detection ML training
+    - broadcast indexing
+
+
+===============================================================================
+EXPECTED DATASET STRUCTURE
+===============================================================================
+
+Root dataset folder:
+    ./dataset/
+        Match_001/
+            1_720p.mp4
+            2_720p.mp4
+            Labels-v2.json
+
+        Match_002/
+            1.mkv
+            2.mkv
+            Labels-v2.json
+
+IMPORTANT ASSUMPTIONS:
+----------------------
+Each match folder MUST contain:
+    exactly 2 videos → half 1 and half 2
+    exactly 1 JSON annotation file
+
+Video naming rule:
+    filename contains "1"  → first half
+    filename contains "2"  → second half
+
+If structure is invalid → folder is skipped
+
+
+===============================================================================
+OUTPUT STRUCTURE
+===============================================================================
+
+All extracted clips go into a single folder:
+
+    ./00_goalcut/
+        Match_001_Goal_1_345.mp4
+        Match_001_Goal_2_1890.mp4
+        Match_002_Goal_1_120.mp4
+
+Filename format:
+    {MatchFolder}_Goal_{Half}_{TimestampInSeconds}.mp4
+
+This ensures:
+    - unique naming
+    - searchable metadata
+    - no overwriting between matches
+
+
+===============================================================================
+ANNOTATION FORMAT (JSON)
+===============================================================================
+
+Annotations contain events in this format:
+
+{
+    "annotations": [
+        {
+            "gameTime": "1 - 12:35",
+            "label": "Goal"
+        },
+        {
+            "gameTime": "2 - 44:10",
+            "label": "Foul"
+        }
+    ]
+}
+
+gameTime meaning:
+    "HalfNumber - MM:SS"
+
+Example:
+    "1 - 12:35"
+        half = 1
+        minute = 12
+        second = 35
+
+
+===============================================================================
+TIME CONVERSION LOGIC
+===============================================================================
+
+We convert gameTime → seconds because FFmpeg requires seconds.
+
+Formula:
+    total_seconds = minutes * 60 + seconds
+
+Example:
+    "1 - 12:35"
+    = 12*60 + 35
+    = 755 seconds
+
+This timestamp represents:
+    position INSIDE THE HALF VIDEO (not full match time)
+
+
+===============================================================================
+CLIP WINDOW CALCULATION
+===============================================================================
+
+We want context around the goal event.
+
+Chosen window:
+    start_time = goal_time - 10 seconds
+    end_time   = goal_time + 70 seconds
+
+Why:
+    - replay buildup before goal
+    - celebration after goal
+
+Edge protection:
+    start_time = max(0, start_time)
+    (prevents negative timestamps near video start)
+
+Duration:
+    duration = end_time - start_time
+
+
+===============================================================================
+VIDEO SELECTION LOGIC
+===============================================================================
+
+Each goal belongs to a specific half.
+
+Example:
+    "1 - 12:35" → use first half video
+    "2 - 05:10" → use second half video
+
+The script maps:
+    half → correct video file
+
+gameTime_videos = {
+    1: first_half_video,
+    2: second_half_video
+}
+
+
+===============================================================================
+HOW CLIPS ARE EXTRACTED (FFMPEG)
+===============================================================================
+
+Command executed:
+
+ffmpeg -ss START -i input.mp4 -t DURATION -c:v libx264 -c:a aac -y output.mp4
+
+Parameter meaning:
+------------------
+-ss START
+    Seek to start timestamp in seconds
+
+-i input.mp4
+    Input video file
+
+-t DURATION
+    Length of clip in seconds
+
+-c:v libx264
+    Re-encode video using H.264 (compatibility)
+
+-c:a aac
+    Re-encode audio using AAC
+
+-y
+    Overwrite existing files automatically
+
+
+Why re-encoding instead of copying?
+-----------------------------------
+Ensures:
+    - accurate seeking
+    - frame alignment
+    - consistent output format
+    - avoids keyframe cut issues
+
+
+===============================================================================
+PROCESSING FLOW
+===============================================================================
+
+For each match folder:
+
+1) Verify folder structure
+2) Identify half 1 and half 2 videos
+3) Load annotation JSON
+4) Iterate annotations
+5) If label == "Goal":
+        convert time → seconds
+        choose correct half video
+        compute clip window
+        run ffmpeg
+6) Save clip
+
+
+===============================================================================
+ERROR HANDLING
+===============================================================================
+
+Handled cases:
+    - invalid JSON format
+    - wrong gameTime string
+    - missing video
+    - ffmpeg failure
+
+Skipped safely without stopping full dataset processing.
+
+
+===============================================================================
+LIMITATIONS
+===============================================================================
+
+- Requires FFmpeg installed and available in PATH
+- Relies on filename containing "1" and "2"
+- Only processes "Goal" events
+- Always re-encodes (slower but accurate)
+- Single-threaded (no parallel processing)
+
+
+===============================================================================
+END OF DOCUMENTATION
+===============================================================================
+"""
+
 import os
 import json
 import subprocess
