@@ -51,8 +51,8 @@ Used for:
 ```
 Shot-Boundary-Detection/
 
-├── dataset/                            # Original SoccerNet match dataset
-│                                       # Each subfolder contains a full match and annotations
+├── dataset/                            # Full length SoccerNet match
+│                                       # Each subfolder contains 2 video files and 1 annotations
 │                                       # Used as source input to generate goal clips
 
 ├── Ground Truth/                       
@@ -63,18 +63,17 @@ Shot-Boundary-Detection/
 ├── output_ffmpeg/                      # Frame extraction output (images + timestamps)
 ├── output_fusion/                      # Final hybrid method results
 ├── output_histogram_detector/          # HistogramDetector detection results
-├── output_transnet_v2/                 # Deep learning detection results
+├── output_transnet_v2/                 # transnet_v2 results
 
 ├── transnetv2-weights/                 # Pretrained model weights required for TransNetV2 inference
 
-├── .gitattributes                      # Git configuration
-├── __init__.py                         # Enables local Python package import
+├── __init__.py                         # Enables local Python package import for transnet_v2 (from their official website)
 
 ├── 01_frame_extraction.py              # Extracts all frames for manual labeling
 ├── 01_goal_clip_extraction.py          # Converts matches → goal-centered clips
-├── 02_transnet_v2.py                   # Deep learning shot boundary detection
-├── 03_adaptive_detector.py             # Pixel-based detection (AdaptiveDetector)
-├── 03_histogram_detector.py            # Histogram-based detection
+├── 02_transnet_v2.py                   # transnet_v2 detection
+├── 03_adaptive_detector.py             # AdaptiveDetector detection
+├── 03_histogram_detector.py            # Histogram detection
 
 ├── 03_grid_search_parameter_histogram_detector.py      # Histogram parameter search
 ├── 03_grid_search_parameters_adaptive_detector.py      # Adaptive parameter search
@@ -85,10 +84,10 @@ Shot-Boundary-Detection/
 ├── 03_statistical_analysis_adaptive_detector.ipynb     # Adaptive detector plots
 ├── 03_statistical_analysis_histogram_detector.ipynb    # Histogram detector plots
 
-├── 04_fusion.py                        # Hybrid fusion algorithm
+├── 04_fusion.py                        # Proposed algorithm (Transnet_v2 + AdaptiveDetector)
 
 ├── requirements.txt                    # Python dependencies
-├── transnetv2.py                       # TransNetV2 inference wrapper
+├── transnetv2.py                       # TransNetV2 inference wrapper (from their official website)
 └── README.md
 ```
 
@@ -105,7 +104,7 @@ cd Shot-Boundary-Detection
 
 ---
 
-### 2. Download TransNetV2 Weights
+### 2. Download TransNetV2 Weights (if not available)
 
 Download:
 [https://github.com/soCzech/TransNetV2/tree/master/inference/transnetv2-weights](https://github.com/soCzech/TransNetV2/tree/master/inference/transnetv2-weights)
@@ -132,7 +131,7 @@ pip install -r requirements.txt
 
 ### Step 1 — Generate Goal Clips
 
-Creates experiment dataset.
+Creates experiment dataset (make sure you have full lenght soccer match and annotations in dataset folder).
 
 ```bash
 python 01_goal_clip_extraction.py
